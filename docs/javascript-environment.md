@@ -1,3 +1,146 @@
+vv/*
+SF Music app — Protótipo Flutter mínimo
+Funcionalidades:
+- Reproduz um arquivo de áudio local (assets/song.mp3)
+- Lê um arquivo LRC (assets/song.lrc) e exibe as letras
+- Destaque da linha atual conforme o tempo do áudio
+- Play/Pause e Seek simples
+
+Dependências Flutter:
+- audioplayers: ^2.0.0
+- flutter/services.dart para carregar o LRC do assets
+*/
+
+import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart' show rootBundle;
+
+void main() {
+  runApp(const SFMusicApp());
+}
+
+class SFMusicApp extends StatelessWidget {
+  const SFMusicApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'SF Music app',
+      theme: ThemeData.dark(),
+      home: const MusicScreen(),
+    );
+  }
+}
+
+class LyricLine {
+  final Duration time;
+  final String text;
+  LyricLine(this.time, this.text);
+}
+
+class MusicScreen extends StatefulWidget {
+  const MusicScreen({super.key});
+
+  @override
+  State<MusicScreen> createState() => _MusicScreenState();
+}
+
+class _MusicScreenState extends State<MusicScreen> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  List<LyricLine> _lyrics = [];
+  int _currentIndex = 0;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLyrics();
+    _audioPlayer.onPositionChanged.listen((pos) {
+      if (_lyrics.isNotEmpty) {
+        int idx = 0;
+        for (int i = 0; i < _lyrics.length; i++) {
+          if (_lyrics[i].time <= pos) idx = i;
+          else break;
+        }
+        setState(() {
+          _currentIndex = idx;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadLyrics() async {
+    String lrcText = await rootBundle.loadString('assets/song.lrc');
+    final lines = lrcText.split(RegExp(r'\r?\n')).where((l) => l.trim().isNotEmpty);
+    List<LyricLine> parsed = [];
+    final tagRe = RegExp(r'\[(\d{1,2}):(\d{2})(?:\.(\d{1,2}))?\]');
+
+    for (var line in lines) {
+      var matches = tagRe.allMatches(line);
+      String text = line.replaceAll(tagRe, '').trim();
+      for (var m in matches) {
+        int mm = int.parse(m.group(1)!);
+        int ss = int.parse(m.group(2)!);
+        int cs = m.group(3) != null ? int.parse(m.group(3)!.padRight(2,'0')) : 0;
+        parsed.add(LyricLine(Duration(minutes: mm, seconds: ss, milliseconds: cs*10), text));
+      }
+    }
+    parsed.sort((a,b) => a.time.compareTo(b.time));
+    setState(() { _lyrics = parsed; });
+  }
+
+  Future<void> _playPause() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+    } else {
+      await _audioPlayer.play(AssetSource('song.mp3'));
+    }
+    setState(() { _isPlaying = !_isPlaying; });
+  }
+
+  Future<void> _seekBy(Duration offset) async {
+    final pos = await _audioPlayer.getCurrentPosition();
+    if (pos != null) {
+      Duration target = pos + offset;
+      if (target < Duration.zero) target = Duration.zero;
+      await _audioPlayer.seek(target);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('SF Music app — Protótipo Flutter')),
+      body: Column(
+        children: [
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(onPressed: () => _seekBy(const Duration(seconds: -5)), icon: const Icon(Icons.replay_5)),
+              IconButton(onPressed: _playPause, icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 36)),
+              IconButton(onPressed: () => _seekBy(const Duration(seconds: 5)), icon: const Icon(Icons.forward_5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _lyrics.length,
+              itemBuilder: (context, index) {
+                bool active = index == _currentIndex;
+                return Container(
+                  color: active ? Colors.blueGrey : null,
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                  child: Text(_lyrics[index].text, style: TextStyle(color: active ? Colors.white : Colors.lightBlueAccent, fontSize: active ? 18 : 16)),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 ---
 id: javascript-environment
 title: JavaScript Environment
